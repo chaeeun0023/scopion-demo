@@ -1,0 +1,76 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["document", "activities", "detail", "charges"],
+  "properties": {
+    "document": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["billing_month", "period_start", "period_end", "customer_number", "billing_amount"],
+      "properties": {
+        "billing_month": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}$", "description": "YYYY-MM"},
+        "period_start": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+        "period_end": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+        "customer_number": {"type": ["string", "null"]},
+        "site_address": {"type": ["string", "null"], "description": "사용장소 (우편 주소 아님)"},
+        "meter_number": {"type": ["string", "null"]},
+        "billing_amount": {"type": ["number", "null"], "description": "청구금액 (원)"},
+        "tax_supply_amount": {"type": ["number", "null"], "description": "공급가액 (원)"},
+        "issue_date": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+        "supplier_reg_number": {"type": ["string", "null"], "pattern": "^\\d{3}-\\d{2}-\\d{5}$"},
+        "recipient_reg_number": {"type": ["string", "null"], "pattern": "^\\d{3}-\\d{2}-\\d{5}$"},
+        "supplier_name": {"type": ["string", "null"]},
+        "payment_due_date": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "납부마감일(납기일)"}
+      }
+    },
+    "activities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["value", "unit", "period_start", "period_end"],
+        "properties": {
+          "value": {"type": ["number", "null"], "description": "사용량 (kWh)"},
+          "unit": {"enum": ["kWh", null]},
+          "period_start": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+          "period_end": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+          "meter_current": {"type": ["number", "null"]},
+          "meter_previous": {"type": ["number", "null"]},
+          "usage_prev_month": {"type": ["number", "null"]},
+          "usage_same_month_lastyear": {"type": ["number", "null"]}
+        }
+      }
+    },
+    "detail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract_type", "contract_power_kw", "meter_multiplier"],
+      "properties": {
+        "contract_type": {"type": ["string", "null"], "description": "계약종별 (예: 산업용(갑)저압)"},
+        "contract_power_kw": {"type": ["number", "null"]},
+        "meter_multiplier": {"type": ["number", "null"]},
+        "approval_number": {"type": ["string", "null"], "description": "전자세금계산서 승인번호"},
+        "regular_reading_day": {"type": ["number", "null"], "description": "정기검침일 (매월 N일)"},
+        "power_factor_lagging": {"type": ["number", "null"], "description": "지상역률 (%)"},
+        "power_factor_leading": {"type": ["number", "null"], "description": "진상역률 (%)"}
+      }
+    },
+    "charges": {
+      "type": "array",
+      "description": "요금 항목 목록. 소계(전기요금계·당월요금계·청구금액 등 합계줄)는 넣지 않고 개별 항목만. 감면·절사처럼 빼는 항목은 amount를 음수로.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "amount"],
+        "properties": {
+          "code": {
+            "enum": ["base_fee", "usage_fee", "climate_env_fee", "fuel_cost_adjustment", "power_factor_adjustment", "discount", "meter_replacement_fee", "special_meter_mgmt_fee", "vat", "power_fund", "rounding", "tv_fee", "late_fee", "unpaid_carryover", "adjustment", "other"]
+          },
+          "name_raw": {"type": ["string", "null"], "description": "고지서에 적힌 항목명 그대로"},
+          "amount": {"type": ["number", "null"], "description": "원. 음수 가능"}
+        }
+      }
+    }
+  }
+}

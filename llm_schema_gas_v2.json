@@ -1,0 +1,83 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["document", "activities", "detail", "charges"],
+  "properties": {
+    "document": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["billing_month", "period_start", "period_end", "customer_number", "billing_amount"],
+      "properties": {
+        "billing_month": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}$", "description": "YYYY-MM"},
+        "period_start": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+        "period_end": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+        "customer_number": {"type": ["string", "null"]},
+        "site_address": {"type": ["string", "null"], "description": "사용주소 (우편 주소 아님)"},
+        "meter_number": {"type": ["string", "null"], "description": "GM번호/계량기번호"},
+        "billing_amount": {"type": ["number", "null"], "description": "청구(분)금액 (원)"},
+        "tax_supply_amount": {"type": ["number", "null"], "description": "공급가액 (원)"},
+        "issue_date": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "작성일자/발행일"},
+        "supplier_reg_number": {"type": ["string", "null"], "pattern": "^\\d{3}-\\d{2}-\\d{5}$"},
+        "recipient_reg_number": {"type": ["string", "null"], "pattern": "^\\d{3}-\\d{2}-\\d{5}$"},
+        "supplier_name": {"type": ["string", "null"]},
+        "payment_due_date": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "납부마감일"}
+      }
+    },
+    "activities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["value", "unit", "period_start", "period_end"],
+        "properties": {
+          "value": {"type": ["number", "null"], "description": "사용량(검침량)"},
+          "unit": {"enum": ["m³", "Nm³", null]},
+          "period_start": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+          "period_end": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+          "meter_current": {"type": ["number", "null"]},
+          "meter_previous": {"type": ["number", "null"]},
+          "usage_prev_month": {"type": ["number", "null"], "description": "전월 사용량"},
+          "usage_same_month_lastyear": {"type": ["number", "null"], "description": "전년동월 사용량"}
+        }
+      }
+    },
+    "detail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["correction_factor", "corrected_volume", "avg_calorific_value", "total_heat_value", "usage_type"],
+      "properties": {
+        "correction_factor": {"type": ["number", "null"], "description": "온압보정계수/보정계수"},
+        "corrected_volume": {"type": ["number", "null"], "description": "보정사용량/보정량"},
+        "corrected_volume_unit": {"enum": ["m³", "Nm³", null]},
+        "avg_calorific_value": {"type": ["number", "null"], "description": "평균열량"},
+        "avg_calorific_unit": {"type": ["string", "null"], "description": "예: kcal/m³"},
+        "total_heat_value": {"type": ["number", "null"], "description": "사용열량/총사용열량"},
+        "total_heat_unit": {"type": ["string", "null"], "description": "예: Mcal, MJ"},
+        "usage_type": {"type": ["string", "null"], "description": "용도 (예: 산업용)"},
+        "reading_method": {"type": ["string", "null"], "description": "검침근거"},
+        "unit_price": {"type": ["number", "null"], "description": "단가"},
+        "unit_price_unit": {"type": ["string", "null"], "description": "예: 원/m³"},
+        "e_payment_number": {"type": ["string", "null"], "description": "전자납부번호"},
+        "monthly_usage_history": {"type": ["string", "null"], "description": "최근 1년간 사용량 추이 / 월별 사용량 (표를 그대로 텍스트로)"},
+        "supply_point_number": {"type": ["string", "null"], "description": "수용가번호"}
+      }
+    },
+    "charges": {
+      "type": "array",
+      "description": "요금 항목 목록. 소계(전기요금계·당월요금계·청구금액 등 합계줄)는 넣지 않고 개별 항목만. 감면·절사처럼 빼는 항목은 amount를 음수로.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "amount"],
+        "properties": {
+          "code": {
+            "enum": ["base_fee", "usage_fee", "climate_env_fee", "fuel_cost_adjustment", "power_factor_adjustment", "discount", "meter_replacement_fee", "special_meter_mgmt_fee", "vat", "power_fund", "rounding", "tv_fee", "late_fee", "unpaid_carryover", "adjustment", "other"]
+          },
+          "name_raw": {"type": ["string", "null"], "description": "고지서에 적힌 항목명 그대로"},
+          "amount": {"type": ["number", "null"], "description": "원. 음수 가능"}
+        }
+      }
+    }
+  }
+}
