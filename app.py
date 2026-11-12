@@ -114,6 +114,86 @@ DETAIL_REQUIRED = {
     "gas": {"correction_factor", "corrected_volume", "avg_calorific_value", "total_heat_value", "usage_type"},
 }
 
+FACTORS_PATH = os.path.join(HERE, "emission_factors.json")
+
+
+# ---------- 배출계수 (연도·연료별) ----------
+
+def load_factors():
+    """emission_factors.json을 읽어온다. 파일이 없으면 빈 틀을 돌려준다."""
+    if os.path.exists(FACTORS_PATH):
+        with open(FACTORS_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+    else:
+        data = {}
+    data.setdefault("electricity", [])
+    data.setdefault("gas", [])
+    return data
+
+
+def save_factors(data):
+    with open(FACTORS_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def get_factor(factors, fuel, year):
+    """해당 연료·연도의 배출계수 행을 찾는다. 없으면 None (= 산정하지 않음)."""
+    if year is None:
+        return None
+    for row in factors.get(fuel, []):
+        if row.get("year") == year:
+            return row
+    return None
+
+
+def compute_emission(record, factors):
+    """승인된 레코드에 배출계수를 곱해 배출량(tCO2e)을 계산한다.
+    계수가 없으면 계산하지 않고 이유를 돌려준다 ('계수 없으면 산정하지 않음' 원칙)."""
+    doc_type = "electricity" if record.get("document_type") == "electricity_bill" else "gas"
+    billing_month = (record.get("document") or {}).get("billing_month")
+    year = None
+    if billing_month and "-" in str(billing_month):
+        try:
+            year = int(str(billing_month).split("-")[0])
+        except ValueError:
+            year = None
+
+    if year is None:
+        return {"ok": False, "reason": "청구월을 알 수 없어 연도별 배출계수를 적용할 수 없습니다."}
+
+    factor = get_factor(factors, doc_type, year)
+    if factor is None:
+        return {"ok": False, "reason": f"{year}년 {('전력' if doc_type=='electricity' else '도시가스')} 배출계수가 등록되어 있지 않아 산정을 보류합니다."}
+
+    act0 = (record.get("activities") or [{}])[0]
+    detail = record.get("detail") or {}
+
+    if doc_type == "electricity":
+        usage_kwh = _num(act0.get("value"))
+        if usage_kwh is None:
+            return {"ok": False, "reason": "사용량(kWh)이 없어 산정할 수 없습니다."}
+        usage_mwh = usage_kwh / 1000
+        result = usage_mwh * factor["value"]
+        formula = f"{usage_kwh:,.0f}kWh ÷ 1000 × {factor['value']}{factor['unit']} = {result:.3f} tCO2e"
+        input_snapshot = {"usage_kwh": usage_kwh}
+    else:
+        heat_mj = _num(detail.get("total_heat_value"))
+        if heat_mj is None:
+            return {"ok": False, "reason": "사용열량(MJ)이 없어 산정할 수 없습니다. (상세 항목의 '사용열량'을 먼저 채워주세요)"}
+        usage_gj = heat_mj / 1000
+        result = usage_gj * factor["value"] / 1000  # kgCO2/GJ -> tCO2e
+        formula = f"{heat_mj:,.0f}MJ ÷ 1000 × {factor['value']}{factor['unit']} ÷ 1000 = {result:.3f} tCO2e"
+        input_snapshot = {"total_heat_value_mj": heat_mj}
+
+    return {
+        "ok": True,
+        "result_tco2e": result,
+        "formula": formula,
+        "emission_factor": factor,
+        "input_snapshot": input_snapshot,
+        "calculated_at": datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z",
+    }
+
 
 # ---------- 기존 run_llm_single.py와 동일한 로직 (재사용) ----------
 
@@ -441,3 +521,55 @@ if "record" in st.session_state:
 if "confirmed_record" in st.session_state:
     st.subheader("승인된 레코드 (다음 단계로 넘어갈 데이터, 공통스키마 v2.2 모양)")
     st.json(st.session_state["confirmed_record"])
+
+    st.divider()
+    st.subheader("배출계수 (연도·연료별)")
+    st.warning("⚠️ 아래 값은 데모용 예시이며 공식 배출계수가 아닙니다. 공식 출처가 확정되면 이 표의 값만 교체하면 됩니다.")
+
+    factors = load_factors()
+    current_fuel = "electricity" if st.session_state["confirmed_record"].get("document_type") == "electricity_bill" else "gas"
+    fuel_label = "전력(전기)" if current_fuel == "electricity" else "도시가스"
+    unit_label = "tCO2eq/MWh" if current_fuel == "electricity" else "kgCO2/GJ"
+
+    st.caption(f"지금 승인된 문서는 **{fuel_label}**입니다. 아래 표에서 해당 연료의 연도별 계수를 확인·수정할 수 있습니다.")
+    edited_factor_rows = st.data_editor(
+        factors.get(current_fuel, []),
+        num_rows="dynamic",
+        use_container_width=True,
+        column_config={
+            "year": st.column_config.NumberColumn("연도", format="%d"),
+            "value": st.column_config.NumberColumn(f"배출계수 ({unit_label})"),
+            "unit": st.column_config.TextColumn("단위"),
+            "source": st.column_config.TextColumn("출처"),
+        },
+        key="factor_editor",
+    )
+    if st.button("배출계수 저장"):
+        factors[current_fuel] = edited_factor_rows
+        save_factors(factors)
+        st.success("emission_factors.json에 저장했습니다.")
+    factors[current_fuel] = edited_factor_rows  # 저장 전이라도 바로 아래 산정에 반영
+
+    st.divider()
+    st.subheader("배출량 산정 (사용량 × 배출계수)")
+    calc = compute_emission(st.session_state["confirmed_record"], factors)
+    if not calc["ok"]:
+        st.info(f"산정 보류: {calc['reason']}")
+    else:
+        c1, c2, c3 = st.columns(3)
+        c1.metric("배출량", f"{calc['result_tco2e']:.3f} tCO2e")
+        c2.metric("적용 배출계수", f"{calc['emission_factor']['value']} {calc['emission_factor']['unit']}")
+        c3.metric("적용 연도", calc["emission_factor"]["year"])
+        st.caption(f"출처: {calc['emission_factor']['source']}")
+        st.code(calc["formula"], language=None)
+
+        if st.button("이 산정 결과를 레코드에 반영"):
+            st.session_state["confirmed_record"]["emissions"] = {
+                "formula": calc["formula"],
+                "emission_factor": calc["emission_factor"],
+                "input_snapshot": calc["input_snapshot"],
+                "result_tco2e": calc["result_tco2e"],
+                "calculated_at": calc["calculated_at"],
+            }
+            st.session_state["confirmed_record"]["status"] = "CALCULATED"
+            st.success("레코드의 emissions 항목에 산정 결과를 채워 넣었습니다. (위 JSON을 다시 펼쳐보면 반영돼 있어요)")
